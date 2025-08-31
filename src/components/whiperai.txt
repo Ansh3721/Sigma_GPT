@@ -1,0 +1,119 @@
+// src/components/SearchBar.jsx
+
+import React, { useState, useRef, useCallback } from "react";
+import { motion } from "framer-motion";
+import { Send, Paperclip, Mic, StopCircle } from "lucide-react";
+import IconButton from "./IconButton";
+
+const SILENCE_THRESHOLD = 5;
+const SILENCE_DURATION = 2000;
+
+export default function SearchBar({ value, onChange, onSubmit, onPickFile, compact = false }) {
+  const formRef = useRef(null);
+  
+  const [isRecording, setIsRecording] = useState(false);
+  const [language, setLanguage] = useState('en'); // <-- ADDED: State for language, default is English ('en')
+
+  const mediaRecorder = useRef(null);
+  const audioChunks = useRef([]);
+  // ... other refs for silence detection
+  const audioContext = useRef(null);
+  const analyser = useRef(null);
+  const silenceTimer = useRef(null);
+  const audioCheckInterval = useRef(null);
+
+  const sendAudioToServer = useCallback(async () => {
+    setIsRecording(false);
+    const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
+    if (audioBlob.size < 100) return;
+
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.webm');
+    formData.append('language', language); // <-- ADDED: Send the selected language to the backend
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/transcribe/', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (onChange) onChange(data.transcription);
+      } else {
+        const errorData = await response.json();
+        console.error("Server Error Details:", errorData.details);
+        alert(errorData.error);
+      }
+    } catch (error) {
+      console.error("Network Error:", error);
+      alert("Network error. Is the backend server running?");
+    }
+  }, [onChange, language]); // <-- ADDED: 'language' as a dependency
+  
+  // ... all your other functions (stopRecording, checkForSilence, startRecording, etc.) remain the same ...
+
+  // (For brevity, the other functions are omitted. Ensure they are still in your file.)
+  const stopRecording = useCallback(() => { /* ...your existing code... */ }, [/* ... */]);
+  const checkForSilence = useCallback(() => { /* ...your existing code... */ }, [stopRecording]);
+  const startRecording = async () => { /* ...your existing code... */ };
+  
+  const handleMicClick = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+  
+  const handleSubmit = (e) => {
+    if (e) e.preventDefault();
+    if (onSubmit) onSubmit();
+  };
+
+  return (
+    <div>
+      {/* --- ADDED: Language Selector --- */}
+      <div className="flex justify-center gap-4 mb-2 text-sm text-neutral-600 dark:text-neutral-400">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="language" value="en" checked={language === 'en'} onChange={(e) => setLanguage(e.target.value)} />
+          English
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="language" value="hi" checked={language === 'hi'} onChange={(e) => setLanguage(e.target.value)} />
+          Hindi / Hinglish
+        </label>
+      </div>
+      {/* ---------------------------------- */}
+      
+      <motion.form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        layout
+        transition={{ type: "spring", stiffness: 120, damping: 18 }}
+        className={["w-full", compact ? "" : "max-w-3xl"].join(" ")}
+        aria-label="Search"
+      >
+        <div className="flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white/80 backdrop-blur shadow-sm dark:border-neutral-800 dark:bg-neutral-900/60 p-2 sm:p-3">
+          <input
+            value={value}
+            onChange={(e) => onChange?.(e.target.value)}
+            placeholder="Ask Startup.ai…"
+            className="flex-1 bg-transparent outline-none dark:placeholder:text-neutral-400 text-base py-1.5"
+          />
+          <div className="flex items-center gap-1 sm:gap-2">
+            <IconButton title="Add files" onClick={onPickFile}>
+              <Paperclip size={18} />
+            </IconButton>
+            <IconButton title={isRecording ? "Stop recording" : "Use microphone"} onClick={handleMicClick}>
+              {isRecording ? <StopCircle size={18} className="text-red-500 animate-pulse" /> : <Mic size={18} />}
+            </IconButton>
+            <IconButton title="Search" onClick={handleSubmit} primary>
+              <Send size={18} />
+            </IconButton>
+          </div>
+        </div>
+      </motion.form>
+    </div>
+  );
+}
